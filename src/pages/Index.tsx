@@ -7,33 +7,8 @@ import { ResourceDisplay } from "@/components/ResourceDisplay";
 import { toast } from "@/hooks/use-toast";
 import type { WorkflowStep, Audience, ResourceIdea, GeneratedResource } from "@/types/resource";
 
-// Mock data for demonstration - replace with actual n8n endpoint calls
-const mockIdeas: ResourceIdea[] = [
-  { id: 'wts_1', category: 'what_to_say', title: 'Calm Responses to Name-Calling', description: 'Scripts for children to use when faced with verbal bullying, emphasizing confidence and de-escalation.' },
-  { id: 'wts_2', category: 'what_to_say', title: 'Conversation Starters for Parents', description: 'Age-appropriate ways to open dialogue about bullying experiences at home.' },
-  { id: 'wts_3', category: 'what_to_say', title: 'Peer Support Phrases', description: 'What bystanders can say to support targeted students and discourage bullying behavior.' },
-  { id: 'wtd_1', category: 'what_to_do', title: 'Step-by-Step Incident Checklist', description: 'A practical guide for documenting and reporting bullying incidents effectively.' },
-  { id: 'wtd_2', category: 'what_to_do', title: 'Classroom Prevention Activities', description: 'Interactive exercises that build empathy and reduce bullying behavior.' },
-  { id: 'wtd_3', category: 'what_to_do', title: 'Digital Safety Action Plan', description: 'Concrete steps for addressing cyberbullying and maintaining online safety.' },
-];
-
-const mockResources: GeneratedResource[] = [
-  {
-    id: 'res_1',
-    idea_id: 'wts_1',
-    title: 'Calm Responses to Name-Calling',
-    html: `<h2>Calm Responses to Name-Calling</h2>
-<p>When someone calls you a name, it can hurt. But you have the power to respond in ways that protect your feelings and show confidence. Here are some strategies:</p>
-<h3>The Power Phrases</h3>
-<ul>
-<li><strong>"Thanks for sharing."</strong> — Neutral, shows you're unbothered</li>
-<li><strong>"Okay."</strong> — Simple, takes away their power</li>
-<li><strong>"I don't agree, but you're entitled to your opinion."</strong> — Mature and confident</li>
-</ul>
-<h3>Remember</h3>
-<p>Your reaction is your superpower. When you stay calm, you show that their words don't control you. Practice these responses at home so they feel natural when you need them.</p>`
-  }
-];
+const N8N_IDEAS_ENDPOINT = 'https://meta-lutz.app.n8n.cloud/webhook-test/upload-pdf';
+const N8N_RESOURCES_ENDPOINT = 'https://meta-lutz.app.n8n.cloud/webhook-test/generate-resource';
 
 export default function Index() {
   const [step, setStep] = useState<WorkflowStep>('upload');
@@ -47,26 +22,36 @@ export default function Index() {
     setIsLoading(true);
     
     try {
-      // TODO: Replace with actual n8n endpoint call
-      // const formData = new FormData();
-      // formData.append('file', file);
-      // const response = await fetch('/api/ideas', {
-      //   method: 'POST',
-      //   body: JSON.stringify({ base_title: file.name, base_text: '...', audience }),
-      // });
+      // Extract text from file (for PDF, you may need server-side extraction)
+      const text = await file.text();
+      const title = file.name.replace(/\.[^/.]+$/, '');
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      const response = await fetch(N8N_IDEAS_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          base_title: title,
+          base_text: text,
+          audience: audience,
+        }),
+      });
       
-      setBaseTitle(file.name.replace(/\.[^/.]+$/, ''));
-      setIdeas(mockIdeas);
+      if (!response.ok) {
+        throw new Error('Failed to analyze resource');
+      }
+      
+      const data = await response.json();
+      
+      setBaseTitle(data.base_title || title);
+      setIdeas(data.ideas || []);
       setStep('ideas');
       
       toast({
         title: "Analysis Complete",
-        description: `Found ${mockIdeas.length} expansion ideas for your resource.`,
+        description: `Found ${data.ideas?.length || 0} expansion ideas for your resource.`,
       });
     } catch (error) {
+      console.error('Upload error:', error);
       toast({
         title: "Error",
         description: "Failed to analyze the resource. Please try again.",
@@ -83,40 +68,30 @@ export default function Index() {
     setSelectedIdeas(selected);
     
     try {
-      // TODO: Replace with actual n8n endpoint call
-      // const response = await fetch('/api/resources', {
-      //   method: 'POST',
-      //   body: JSON.stringify({ base_title: baseTitle, selected_ideas: selected, ... }),
-      // });
+      const response = await fetch(N8N_RESOURCES_ENDPOINT, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          base_title: baseTitle,
+          selected_ideas: selected,
+        }),
+      });
       
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      if (!response.ok) {
+        throw new Error('Failed to generate resources');
+      }
       
-      // Generate mock resources based on selected ideas
-      const generatedResources: GeneratedResource[] = selected.map((idea, index) => ({
-        id: `res_${index + 1}`,
-        idea_id: idea.id,
-        title: idea.title,
-        html: `<h2>${idea.title}</h2>
-<p>${idea.description}</p>
-<h3>Key Points</h3>
-<ul>
-<li>Practical, actionable guidance tailored to your audience</li>
-<li>Evidence-based strategies for bullying prevention</li>
-<li>Age-appropriate language and examples</li>
-</ul>
-<h3>Implementation Tips</h3>
-<p>This resource is designed to be used alongside your existing materials. Share it with parents, educators, or administrators to reinforce your bullying prevention efforts.</p>`
-      }));
+      const data = await response.json();
       
-      setResources(generatedResources);
+      setResources(data.resources || []);
       setStep('resources');
       
       toast({
         title: "Resources Generated",
-        description: `Created ${generatedResources.length} resources for you.`,
+        description: `Created ${data.resources?.length || 0} resources for you.`,
       });
     } catch (error) {
+      console.error('Generate error:', error);
       toast({
         title: "Error",
         description: "Failed to generate resources. Please try again.",
