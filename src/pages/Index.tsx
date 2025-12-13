@@ -7,8 +7,8 @@ import { ResourceDisplay } from "@/components/ResourceDisplay";
 import { toast } from "@/hooks/use-toast";
 import type { WorkflowStep, Audience, ResourceIdea, GeneratedResource } from "@/types/resource";
 
-const N8N_IDEAS_ENDPOINT = 'https://meta-lutz.app.n8n.cloud/webhook-test/upload-pdf';
-const N8N_RESOURCES_ENDPOINT = 'https://meta-lutz.app.n8n.cloud/webhook-test/generate-resource';
+const N8N_IDEAS_ENDPOINT = 'https://meta-lutz.app.n8n.cloud/webhook/upload-pdf';
+const N8N_RESOURCES_ENDPOINT = 'https://meta-lutz.app.n8n.cloud/webhook/generate-resource';
 
 export default function Index() {
   const [step, setStep] = useState<WorkflowStep>('upload');
@@ -20,35 +20,52 @@ export default function Index() {
 
   const handleUpload = async (file: File, audience: Audience) => {
     setIsLoading(true);
-    
+
     try {
-      // Extract text from file (for PDF, you may need server-side extraction)
-      const text = await file.text();
       const title = file.name.replace(/\.[^/.]+$/, '');
-      
+
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("audience", audience);
+      formData.append("base_title", title);
+
       const response = await fetch(N8N_IDEAS_ENDPOINT, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          base_title: title,
-          base_text: text,
-          audience: audience,
-        }),
+        body: formData,
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to analyze resource');
       }
-      
-      const data = await response.json();
-      
-      setBaseTitle(data.base_title || title);
-      setIdeas(data.ideas || []);
+
+      const raw = await response.json();
+      const outer = Array.isArray(raw) ? raw[0] : raw;
+      const output = outer.output ?? outer;
+
+      const baseTitleFromApi = output.base_title || title;
+
+      const ideasFromApi: ResourceIdea[] = [
+        ...(output.what_to_say ?? []).map((idea: any, index: number) => ({
+          id: `say-${index}`,
+          category: 'what_to_say' as const,
+          title: idea.title,
+          description: idea.description,
+        })),
+        ...(output.what_to_do ?? []).map((idea: any, index: number) => ({
+          id: `do-${index}`,
+          category: 'what_to_do' as const,
+          title: idea.title,
+          description: idea.description,
+        })),
+      ];
+
+      setBaseTitle(baseTitleFromApi);
+      setIdeas(ideasFromApi);
       setStep('ideas');
-      
+
       toast({
         title: "Analysis Complete",
-        description: `Found ${data.ideas?.length || 0} expansion ideas for your resource.`,
+        description: `Found ${ideasFromApi.length} expansion ideas for your resource.`,
       });
     } catch (error) {
       console.error('Upload error:', error);
@@ -66,7 +83,7 @@ export default function Index() {
     setIsLoading(true);
     const selected = ideas.filter(i => selectedIds.includes(i.id));
     setSelectedIdeas(selected);
-    
+
     try {
       const response = await fetch(N8N_RESOURCES_ENDPOINT, {
         method: 'POST',
@@ -76,16 +93,16 @@ export default function Index() {
           selected_ideas: selected,
         }),
       });
-      
+
       if (!response.ok) {
         throw new Error('Failed to generate resources');
       }
-      
+
       const data = await response.json();
-      
+
       setResources(data.resources || []);
       setStep('resources');
-      
+
       toast({
         title: "Resources Generated",
         description: `Created ${data.resources?.length || 0} resources for you.`,
@@ -144,7 +161,7 @@ export default function Index() {
                 Build Powerful Prevention Resources
               </h2>
               <p className="text-muted-foreground max-w-lg mx-auto">
-                Upload your base resource and we'll help you create complementary materials 
+                Upload your base resource and we'll help you create complementary materials
                 tailored to your audience.
               </p>
             </div>
